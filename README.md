@@ -1,11 +1,11 @@
 # edge-net-automation
 
-A node in [edge-net](https://github.com/jackwaddington/edge-net). A Pi 3A with a Pimoroni Automation Hat, connected to the edge-net WiFi. Primary use case: graceful shutdown sequencing — SSH into a node, wait for it to halt, then cut power via relay.
+A node in [Edge-NET](https://github.com/jackwaddington/edge-net). A Pi 3A with a Pimoroni Automation Hat, connected to the edge-net WiFi. Primary use case: graceful shutdown sequencing — SSH into a node, wait for it to halt, then cut power via relay.
 
 ## Hardware
 
-- Raspberry Pi 3A
-- Pimoroni Automation Hat
+- [Raspberry Pi 3A](https://www.raspberrypi.com/products/raspberry-pi-3-model-a-plus/)
+- [Pimoroni Automation Hat](https://shop.pimoroni.com/products/automation-hat)
 
 ### Automation Hat I/O
 
@@ -22,7 +22,7 @@ A node in [edge-net](https://github.com/jackwaddington/edge-net). A Pi 3A with a
 
 ## What it does
 
-- Connected to the edge-net WiFi, SSH-accessible from other nodes
+- Connected to the Edge-NET WiFi, SSH-accessible from other nodes
 - Controls relays to switch power to devices (separate 24V supply required)
 - Graceful shutdown sequence: SSH into target node → issue shutdown → wait for halt → open relay to cut power
 - Subscribes to MQTT topics to receive shutdown or control commands
@@ -37,6 +37,6 @@ Python on Raspberry Pi OS. SSH-accessible over the edge-net WiFi, so code can be
 | ----- | --------- | ----------- |
 | TBD | subscribe | Shutdown or relay control commands |
 
-## Part of edge-net
+## Part of Edge-NET
 
-See [edge-net](https://github.com/jackwaddington/edge-net) for the full architecture and list of nodes.
+See [Edge-NET](https://github.com/jackwaddington/edge-net) for the full architecture and list of nodes.
