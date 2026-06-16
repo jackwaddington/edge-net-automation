@@ -1,0 +1,14 @@
+[Unit]
+Description=Edge-NET demo rule (keybow buttons -> relays)
+After=network-online.target relay-node.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/edge/edge-net-automation/rule.py
+WorkingDirectory=/home/edge/edge-net-automation
+Restart=on-failure
+RestartSec=3
+User=edge
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Edge-NET automation relay node (MQTT -> Automation Hat relays)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/edge/edge-net-automation/relay_node.py
+WorkingDirectory=/home/edge/edge-net-automation
+Restart=on-failure
+RestartSec=3
+User=edge
+
+[Install]
+WantedBy=multi-user.target
