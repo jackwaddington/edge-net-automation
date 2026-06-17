@@ -13,6 +13,7 @@ bridges keybow's bare-string dialect to the relay node's JSON.
 """
 
 import json
+import time
 
 import paho.mqtt.client as mqtt
 
@@ -29,6 +30,12 @@ YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
 
 # The rule holds relay state, because neither dumb node does.
 relay_on = {1: False, 2: False, 3: False}
+
+# Idempotency (D5): a button release can arrive twice — mechanical bounce, or a
+# QoS-1 retransmit on a lossy link — and each would flip the relay. Collapse
+# releases that land within this window into one toggle.
+RELEASE_DEBOUNCE = 0.3
+last_release = {1: 0.0, 2: 0.0, 3: 0.0}
 
 
 def event_of(payload):
@@ -64,6 +71,11 @@ def on_message(client, userdata, msg):
             client.publish(TOPIC_LED.format(b), YELLOW, qos=1, retain=True)
             print(f"button {b} press -> LED yellow")
         elif ev == "release":
+            # Ignore a duplicate/bounced release within the debounce window.
+            now = time.time()
+            if now - last_release[relay] < RELEASE_DEBOUNCE:
+                return
+            last_release[relay] = now
             # Release is what actually switches the relay.
             relay_on[relay] = not relay_on[relay]
             state = "on" if relay_on[relay] else "off"
