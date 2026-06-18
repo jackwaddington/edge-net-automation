@@ -1,15 +1,16 @@
-"""Edge-NET demo rule: keybow buttons drive the Pi 3A relays, with LED feedback
-that reflects the round-trip and the real relay state.
+"""Edge-NET rule: button presses from ANY input node drive the Pi 3A relays.
 
-Choreography per button N (-> relay N+1):
-  press   -> LED N goes YELLOW   (ack: the press made it across the bus)
-  release -> toggle relay N      (the release is what actually switches it)
-           -> LED N goes GREEN (relay now on) or RED (relay now off)
+Generalised from the keybow-only demo. Any (node, button) in SOURCES toggles its
+mapped relay on release. The keybow additionally gets LED feedback (press=yellow,
+release=green/red) because it has LEDs; other sources (gamepad, gfx, inky) just
+toggle the relay. Many controls can share one relay — press the "first button" on
+*any* node and relay 1 flips. This rule is the one piece that knows which button
+maps to which relay; the dumb nodes don't. It lives above the bus.
 
-So the LED is a live probe of the whole loop: press/release edges, the MQTT
-round-trip, and the actual relay state. This is the one piece that knows which
-button maps to which relay — neither node does. It lives above the bus and
-bridges keybow's bare-string dialect to the relay node's JSON.
+Choreography per mapped button (-> relay R):
+  press   -> (keybow only) LED yellow   (ack: the press crossed the bus)
+  release -> toggle relay R             (the release is what switches it)
+           -> (keybow only) LED green (on) / red (off), as a live relay probe
 """
 
 import json
@@ -19,27 +20,46 @@ import paho.mqtt.client as mqtt
 
 BROKER, PORT = "10.1.1.1", 1883
 
-# button index (0..2)  ->  relay number (1..3)
-BUTTON_RELAY = {0: 1, 1: 2, 2: 3}
+# (node, button) -> relay number (1..3). Many controls may share a relay.
+SOURCES = {
+    ("keybow", "0"): 1, ("keybow", "1"): 2, ("keybow", "2"): 3,
+    ("gamepad", "a"): 1, ("gamepad", "b"): 2, ("gamepad", "x"): 3,
+    ("gfx", "a"): 1, ("gfx", "b"): 2, ("gfx", "c"): 3,
+    ("inky", "a"): 1, ("inky", "b"): 2, ("inky", "c"): 3,
+}
 
-TOPIC_BUTTON = "edge-net/keybow/button/{}"      # subscribe (bare "press"/"release")
-TOPIC_LED    = "edge-net/keybow/led/{}"         # publish bare "r,g,b" (keybow's dialect)
+TOPIC_BUTTON = "edge-net/{}/button/{}"          # .format(node, button)
 TOPIC_RELAY  = "edge-net/automation/relay/{}"   # publish JSON {"state": ...}
+TOPIC_KEYBOW_LED = "edge-net/keybow/led/{}"     # only the keybow has LEDs
 
 YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
 
 # The rule holds relay state, because neither dumb node does.
 relay_on = {1: False, 2: False, 3: False}
 
-# Idempotency (D5): a button release can arrive twice — mechanical bounce, or a
-# QoS-1 retransmit on a lossy link — and each would flip the relay. Collapse
-# releases that land within this window into one toggle.
+# Idempotency (D5): a release can arrive twice (bounce, or a QoS-1 retransmit on a
+# lossy link). Collapse releases that land within this window into one toggle.
 RELEASE_DEBOUNCE = 0.3
 last_release = {1: 0.0, 2: 0.0, 3: 0.0}
 
+# relay -> [keybow button ids on it], so the keybow LED stays a true relay probe
+# even when a *different* node toggled the relay.
+KEYBOW_FOR_RELAY = {}
+for (_node, _button), _relay in SOURCES.items():
+    if _node == "keybow":
+        KEYBOW_FOR_RELAY.setdefault(_relay, []).append(_button)
+
+
+def parse_button_topic(topic):
+    """edge-net/<node>/button/<button>  ->  (node, button)  or (None, None)."""
+    parts = topic.split("/")
+    if len(parts) == 4 and parts[0] == "edge-net" and parts[2] == "button":
+        return parts[1], parts[3]
+    return None, None
+
 
 def event_of(payload):
-    """keybow publishes bare 'press'/'release'; also accept JSON {"event": ...}."""
+    """Nodes publish bare 'press'/'release'; also accept JSON {"event": ...}."""
     p = payload.decode().strip()
     if p in ("press", "release"):
         return p
@@ -49,43 +69,49 @@ def event_of(payload):
         return None
 
 
+def refresh_keybow(client, relay):
+    colour = GREEN if relay_on[relay] else RED
+    for button in KEYBOW_FOR_RELAY.get(relay, []):
+        client.publish(TOPIC_KEYBOW_LED.format(button), colour, qos=1, retain=True)
+
+
+def set_relay(client, relay, on):
+    relay_on[relay] = on
+    client.publish(TOPIC_RELAY.format(relay),
+                   json.dumps({"state": "on" if on else "off"}),
+                   qos=1, retain=True)
+
+
 def on_connect(client, userdata, flags, rc):
     print(f"Rule connected (rc={rc})")
-    # Start from a known state: relays off, LEDs red. Retained, so keybow picks
-    # the colours up the moment it (re)subscribes.
-    for b, relay in BUTTON_RELAY.items():
-        client.subscribe(TOPIC_BUTTON.format(b), qos=1)
-        relay_on[relay] = False
-        client.publish(TOPIC_RELAY.format(relay),
-                       json.dumps({"state": "off"}), qos=1, retain=True)
-        client.publish(TOPIC_LED.format(b), RED, qos=1, retain=True)
+    for (node, button) in SOURCES:
+        client.subscribe(TOPIC_BUTTON.format(node, button), qos=1)
+    # Known start state: relays off, keybow LEDs red (retained, so the keybow
+    # picks them up the moment it (re)subscribes).
+    for relay in (1, 2, 3):
+        set_relay(client, relay, False)
+        refresh_keybow(client, relay)
 
 
 def on_message(client, userdata, msg):
-    for b, relay in BUTTON_RELAY.items():
-        if msg.topic != TOPIC_BUTTON.format(b):
-            continue
-        ev = event_of(msg.payload)
-        if ev == "press":
-            # Acknowledge the press round-trip: LED yellow (pending).
-            client.publish(TOPIC_LED.format(b), YELLOW, qos=1, retain=True)
-            print(f"button {b} press -> LED yellow")
-        elif ev == "release":
-            # Ignore a duplicate/bounced release within the debounce window.
-            now = time.time()
-            if now - last_release[relay] < RELEASE_DEBOUNCE:
-                return
-            last_release[relay] = now
-            # Release is what actually switches the relay.
-            relay_on[relay] = not relay_on[relay]
-            state = "on" if relay_on[relay] else "off"
-            client.publish(TOPIC_RELAY.format(relay),
-                           json.dumps({"state": state}), qos=1, retain=True)
-            client.publish(TOPIC_LED.format(b),
-                           GREEN if relay_on[relay] else RED, qos=1, retain=True)
-            print(f"button {b} release -> relay {relay} {state} -> LED "
-                  f"{'green' if relay_on[relay] else 'red'}")
+    node, button = parse_button_topic(msg.topic)
+    relay = SOURCES.get((node, button))
+    if relay is None:
         return
+    ev = event_of(msg.payload)
+    if ev == "press":
+        if node == "keybow":
+            client.publish(TOPIC_KEYBOW_LED.format(button), YELLOW, qos=1, retain=True)
+        print(f"{node} {button} press -> relay {relay} (pending)")
+    elif ev == "release":
+        now = time.time()
+        if now - last_release[relay] < RELEASE_DEBOUNCE:
+            return
+        last_release[relay] = now
+        set_relay(client, relay, not relay_on[relay])
+        refresh_keybow(client, relay)
+        print(f"{node} {button} release -> relay {relay} "
+              f"{'on' if relay_on[relay] else 'off'}")
 
 
 client = mqtt.Client()
