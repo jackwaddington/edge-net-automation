@@ -31,8 +31,13 @@ SOURCES = {
 TOPIC_BUTTON = "edge-net/{}/button/{}"          # .format(node, button)
 TOPIC_RELAY  = "edge-net/automation/relay/{}"   # publish JSON {"state": ...}
 TOPIC_KEYBOW_LED = "edge-net/keybow/led/{}"     # only the keybow has LEDs
+TOPIC_STRIP = "edge-net/gamepad/led"            # the Plasma stick's 50-LED strip
 
 YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
+
+# Solid colour the strip flashes while a button is held, per relay; idle between.
+STRIP_COLOUR = {1: "255,0,0", 2: "0,255,0", 3: "0,0,255"}
+STRIP_IDLE = "0,40,80"          # calm teal when nothing is pressed
 
 # The rule holds relay state, because neither dumb node does.
 relay_on = {1: False, 2: False, 3: False}
@@ -91,6 +96,7 @@ def on_connect(client, userdata, flags, rc):
     for relay in (1, 2, 3):
         set_relay(client, relay, False)
         refresh_keybow(client, relay)
+    client.publish(TOPIC_STRIP, STRIP_IDLE)        # strip to calm idle
 
 
 def on_message(client, userdata, msg):
@@ -102,6 +108,7 @@ def on_message(client, userdata, msg):
     if ev == "press":
         if node == "keybow":
             client.publish(TOPIC_KEYBOW_LED.format(button), YELLOW, qos=1, retain=True)
+        client.publish(TOPIC_STRIP, STRIP_COLOUR[relay])    # flash strip colour
         print(f"{node} {button} press -> relay {relay} (pending)")
     elif ev == "release":
         now = time.time()
@@ -110,6 +117,7 @@ def on_message(client, userdata, msg):
         last_release[relay] = now
         set_relay(client, relay, not relay_on[relay])
         refresh_keybow(client, relay)
+        client.publish(TOPIC_STRIP, STRIP_IDLE)             # back to idle
         print(f"{node} {button} release -> relay {relay} "
               f"{'on' if relay_on[relay] else 'off'}")
 
