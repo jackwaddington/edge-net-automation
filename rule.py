@@ -28,11 +28,18 @@ SOURCES = {
     ("inky", "a"): 1, ("inky", "b"): 2, ("inky", "c"): 3,
 }
 
-TOPIC_BUTTON = "edge-net/{}/button/{}"          # .format(node, button)
-TOPIC_RELAY  = "edge-net/automation/relay/{}"   # publish JSON {"state": ...}
-TOPIC_KEYBOW_LED = "edge-net/keybow/led/{}"     # only the keybow has LEDs
-TOPIC_STRIP = "edge-net/gamepad/led"            # the Plasma stick's 50-LED strip
-TOPIC_INKY  = "edge-net/gamepad/button/{}"      # Inky subscribes here; label becomes the display text
+TOPIC_BUTTON     = "edge-net/{}/button/{}"        # .format(node, button)
+TOPIC_RELAY      = "edge-net/automation/relay/{}" # publish JSON {"state": ...}
+TOPIC_KEYBOW_LED = "edge-net/keybow/led/{}"       # only the keybow has LEDs
+TOPIC_STRIP      = "edge-net/gamepad/led"         # the Plasma stick's 50-LED strip
+TOPIC_INKY       = "edge-net/inky/display"        # Inky display: {"text": "...", "face": "..."}
+
+# What the Inky shows when its own buttons are pressed. All logic here, none on device.
+INKY_PHRASES = {
+    "a": ("Aamu on barbaari!", ">:("),
+    "b": ("Aiti on tuhma!",   ":P"),
+    "c": ("Jack on komea!",   ":)"),
+}
 
 YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
 
@@ -81,37 +88,49 @@ def refresh_keybow(client, relay):
         client.publish(TOPIC_KEYBOW_LED.format(button), colour, qos=1, retain=True)
 
 
+def inky_show(client, text, face=None):
+    payload = {"text": text}
+    if face:
+        payload["face"] = face
+    client.publish(TOPIC_INKY, json.dumps(payload), qos=1)
+
+
 def set_relay(client, relay, on):
     relay_on[relay] = on
     client.publish(TOPIC_RELAY.format(relay),
                    json.dumps({"state": "on" if on else "off"}),
                    qos=1, retain=True)
-    label = f"r{relay}_{'on' if on else 'off'}"
-    client.publish(TOPIC_INKY.format(label), "press")
+    inky_show(client, f"Relay {relay} {'on' if on else 'off'}")
 
 
 def on_connect(client, userdata, flags, rc):
     print(f"Rule connected (rc={rc})")
     for (node, button) in SOURCES:
         client.subscribe(TOPIC_BUTTON.format(node, button), qos=1)
-    # Known start state: relays off, keybow LEDs red (retained, so the keybow
-    # picks them up the moment it (re)subscribes).
     for relay in (1, 2, 3):
         set_relay(client, relay, False)
         refresh_keybow(client, relay)
-    client.publish(TOPIC_STRIP, STRIP_IDLE)        # strip to calm idle
+    client.publish(TOPIC_STRIP, STRIP_IDLE)
 
 
 def on_message(client, userdata, msg):
     node, button = parse_button_topic(msg.topic)
+    ev = event_of(msg.payload)
+
+    # Inky buttons show Finnish phrases — don't toggle relays
+    if node == "inky" and button in INKY_PHRASES and ev == "press":
+        text, face = INKY_PHRASES[button]
+        inky_show(client, text, face)
+        print(f"inky {button} press -> phrase: {text}")
+        return
+
     relay = SOURCES.get((node, button))
     if relay is None:
         return
-    ev = event_of(msg.payload)
     if ev == "press":
         if node == "keybow":
             client.publish(TOPIC_KEYBOW_LED.format(button), YELLOW, qos=1, retain=True)
-        client.publish(TOPIC_STRIP, STRIP_COLOUR[relay])    # flash strip colour
+        client.publish(TOPIC_STRIP, STRIP_COLOUR[relay])
         print(f"{node} {button} press -> relay {relay} (pending)")
     elif ev == "release":
         now = time.time()
@@ -120,7 +139,7 @@ def on_message(client, userdata, msg):
         last_release[relay] = now
         set_relay(client, relay, not relay_on[relay])
         refresh_keybow(client, relay)
-        client.publish(TOPIC_STRIP, STRIP_IDLE)             # back to idle
+        client.publish(TOPIC_STRIP, STRIP_IDLE)
         print(f"{node} {button} release -> relay {relay} "
               f"{'on' if relay_on[relay] else 'off'}")
 
