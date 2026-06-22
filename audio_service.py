@@ -67,7 +67,7 @@ def _speak(text):
         proc.wait()
         aplay.wait()
     else:
-        subprocess.run(["espeak", "-s", "150", text], check=False)
+        subprocess.run(["espeak", "-s", "110", text], check=False)
 
 
 def _set_volume(level):
