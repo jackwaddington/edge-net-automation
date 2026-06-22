@@ -33,9 +33,40 @@ Python on Raspberry Pi OS. SSH-accessible over the edge-net WiFi, so code can be
 
 ## MQTT topics
 
+### Relay (relay_node.py / rule.py)
+
 | Topic | Direction | Description |
 | ----- | --------- | ----------- |
-| TBD | subscribe | Shutdown or relay control commands |
+| `edge-net/automation/relay/{1,2,3}` | subscribe | `{"state":"on"}` / `{"state":"off"}` |
+| `edge-net/automation/status` | publish | LWT liveness |
+
+### Audio (audio_service.py)
+
+| Topic | Direction | Payload |
+| ----- | --------- | ------- |
+| `edge/hub/audio/play` | subscribe | `{"file":"chime.wav"}` / `{"tts":"some text"}` / `{"volume":70}` |
+| `edge/hub/audio/state` | publish | `{"status":"playing","source":"…"}` / `{"status":"idle"}` |
+
+## Audio service install
+
+```bash
+# On the Pi 3A
+pip install paho-mqtt
+sudo apt install espeak          # TTS fallback (always available)
+sudo apt install piper           # preferred TTS — skip if unavailable
+
+# Copy sounds to expected location
+sudo mkdir -p /opt/edge-net/sounds
+sudo cp sounds/chime.wav /opt/edge-net/sounds/
+
+# Deploy systemd unit
+sudo cp systemd/edge-net-audio.service /etc/systemd/system/
+sudo systemctl enable --now edge-net-audio
+
+# Test
+mosquitto_pub -h 10.1.1.1 -t edge/hub/audio/play -m '{"tts":"hello world"}'
+mosquitto_pub -h 10.1.1.1 -t edge/hub/audio/play -m '{"file":"chime.wav"}'
+```
 
 ## Part of Edge-NET
 

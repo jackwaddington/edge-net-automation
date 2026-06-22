@@ -1,0 +1,15 @@
+[Unit]
+Description=Edge-NET hub audio service (MQTT → aplay/espeak/piper)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/edge/edge-net-automation/audio_service.py
+WorkingDirectory=/home/edge/edge-net-automation
+Restart=on-failure
+RestartSec=3
+User=edge
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

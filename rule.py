@@ -32,6 +32,7 @@ TOPIC_BUTTON = "edge-net/{}/button/{}"          # .format(node, button)
 TOPIC_RELAY  = "edge-net/automation/relay/{}"   # publish JSON {"state": ...}
 TOPIC_KEYBOW_LED = "edge-net/keybow/led/{}"     # only the keybow has LEDs
 TOPIC_STRIP = "edge-net/gamepad/led"            # the Plasma stick's 50-LED strip
+TOPIC_INKY  = "edge-net/gamepad/button/{}"      # Inky subscribes here; label becomes the display text
 
 YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
 
@@ -85,6 +86,8 @@ def set_relay(client, relay, on):
     client.publish(TOPIC_RELAY.format(relay),
                    json.dumps({"state": "on" if on else "off"}),
                    qos=1, retain=True)
+    label = f"r{relay}_{'on' if on else 'off'}"
+    client.publish(TOPIC_INKY.format(label), "press")
 
 
 def on_connect(client, userdata, flags, rc):
