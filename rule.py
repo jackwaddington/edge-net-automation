@@ -25,7 +25,6 @@ SOURCES = {
     ("keybow", "0"): 1, ("keybow", "1"): 2, ("keybow", "2"): 3,
     ("gamepad", "a"): 1, ("gamepad", "b"): 2, ("gamepad", "x"): 3,
     ("gfx", "a"): 1, ("gfx", "b"): 2, ("gfx", "c"): 3,
-    ("inky", "a"): 1, ("inky", "b"): 2, ("inky", "c"): 3,
 }
 
 TOPIC_BUTTON     = "edge-net/{}/button/{}"        # .format(node, button)
@@ -40,6 +39,14 @@ INKY_PHRASES = {
     "b": ("Aiti on tuhma!",   ":P"),
     "c": ("Jack on komea!",   ":)"),
 }
+
+INKY_TTS = {
+    "a": "Aamu on barbaari",
+    "b": "Aiti on tuhma",
+    "c": "Jack on komea",
+}
+
+TOPIC_AUDIO = "edge/hub/audio/play"
 
 YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
 
@@ -107,6 +114,8 @@ def on_connect(client, userdata, flags, rc):
     print(f"Rule connected (rc={rc})")
     for (node, button) in SOURCES:
         client.subscribe(TOPIC_BUTTON.format(node, button), qos=1)
+    for button in INKY_PHRASES:
+        client.subscribe(TOPIC_BUTTON.format("inky", button), qos=1)
     for relay in (1, 2, 3):
         set_relay(client, relay, False)
         refresh_keybow(client, relay)
@@ -118,10 +127,12 @@ def on_message(client, userdata, msg):
     ev = event_of(msg.payload)
 
     # Inky buttons show Finnish phrases — don't toggle relays
-    if node == "inky" and button in INKY_PHRASES and ev == "press":
-        text, face = INKY_PHRASES[button]
-        inky_show(client, text, face)
-        print(f"inky {button} press -> phrase: {text}")
+    if node == "inky":
+        if button in INKY_PHRASES and ev == "press":
+            text, face = INKY_PHRASES[button]
+            inky_show(client, text, face)
+            client.publish(TOPIC_AUDIO, json.dumps({"tts": INKY_TTS[button]}))
+            print(f"inky {button} press -> phrase: {text}")
         return
 
     relay = SOURCES.get((node, button))
