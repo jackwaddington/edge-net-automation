@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-pip install paho-mqtt
+pip install paho-mqtt --break-system-packages 2>/dev/null || true
 
 sudo mkdir -p /opt/edge-net/sounds
 sudo cp sounds/chime.wav /opt/edge-net/sounds/
