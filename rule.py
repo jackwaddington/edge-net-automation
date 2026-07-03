@@ -27,11 +27,12 @@ SOURCES = {
     ("gfx", "a"): 1, ("gfx", "b"): 2, ("gfx", "c"): 3,
 }
 
-TOPIC_BUTTON     = "edge-net/{}/button/{}"        # .format(node, button)
-TOPIC_RELAY      = "edge-net/automation/relay/{}" # publish JSON {"state": ...}
-TOPIC_KEYBOW_LED = "edge-net/keybow/led/{}"       # only the keybow has LEDs
-TOPIC_STRIP      = "edge-net/gamepad/led"         # the Plasma stick's 50-LED strip
-TOPIC_INKY       = "edge-net/inky/display"        # Inky display: {"text": "...", "face": "..."}
+TOPIC_BUTTON      = "edge-net/{}/button/{}"        # .format(node, button)
+TOPIC_RELAY       = "edge-net/automation/relay/{}" # publish JSON {"state": ...}
+TOPIC_KEYBOW_LED  = "edge-net/keybow/led/{}"       # only the keybow has LEDs
+TOPIC_KEYBOW_LAMP = "edge-net/keybow/lamp"         # retained; keybow colour-mix engine owns this
+TOPIC_STRIP       = "edge-net/gamepad/led"         # the Plasma stick's 50-LED strip
+TOPIC_INKY        = "edge-net/inky/display"        # Inky display: {"text": "...", "face": "..."}
 
 # What the Inky shows when its own buttons are pressed. All logic here, none on device.
 INKY_PHRASES = {
@@ -52,7 +53,8 @@ YELLOW, GREEN, RED = "255,255,0", "0,255,0", "255,0,0"
 
 # Solid colour the strip flashes while a button is held, per relay; idle between.
 STRIP_COLOUR = {1: "255,0,0", 2: "0,255,0", 3: "0,0,255"}
-STRIP_IDLE = "0,40,80"          # calm teal when nothing is pressed
+STRIP_IDLE = "0,0,0"            # default until keybow lamp colour arrives
+strip_idle = STRIP_IDLE         # updated live from edge-net/keybow/lamp
 
 # The rule holds relay state, because neither dumb node does.
 relay_on = {1: False, 2: False, 3: False}
@@ -116,13 +118,27 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe(TOPIC_BUTTON.format(node, button), qos=1)
     for button in INKY_PHRASES:
         client.subscribe(TOPIC_BUTTON.format("inky", button), qos=1)
+    client.subscribe(TOPIC_KEYBOW_LAMP, qos=1)
     for relay in (1, 2, 3):
         set_relay(client, relay, False)
         refresh_keybow(client, relay)
-    client.publish(TOPIC_STRIP, STRIP_IDLE)
+    client.publish(TOPIC_STRIP, strip_idle)
 
 
 def on_message(client, userdata, msg):
+    global strip_idle
+
+    if msg.topic == TOPIC_KEYBOW_LAMP:
+        try:
+            data = json.loads(msg.payload)
+            r, g, b = data["rgb"]
+            strip_idle = f"{r},{g},{b}"
+            client.publish(TOPIC_STRIP, strip_idle)
+            print(f"lamp -> strip idle now {strip_idle}")
+        except (KeyError, ValueError, json.JSONDecodeError):
+            pass
+        return
+
     node, button = parse_button_topic(msg.topic)
     ev = event_of(msg.payload)
 
@@ -150,7 +166,7 @@ def on_message(client, userdata, msg):
         last_release[relay] = now
         set_relay(client, relay, not relay_on[relay])
         refresh_keybow(client, relay)
-        client.publish(TOPIC_STRIP, STRIP_IDLE)
+        client.publish(TOPIC_STRIP, strip_idle)
         print(f"{node} {button} release -> relay {relay} "
               f"{'on' if relay_on[relay] else 'off'}")
 

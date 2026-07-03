@@ -1,0 +1,10 @@
+.DS_Store
+.Rhistory
+__pycache__/
+*.pyc
+*.pyo
+.claude/settings.json
+node_modules/
+.env
+*.swp
+*.swo
