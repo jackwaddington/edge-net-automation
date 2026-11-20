@@ -1,4 +1,4 @@
-BROKER = "10.1.1.1"
+BROKER = "192.168.0.236"
 PORT   = 1883
 
 # This node subscribes — relay commands, one per relay (1..3).

@@ -26,7 +26,7 @@ import threading
 
 import paho.mqtt.client as mqtt
 
-BROKER, PORT     = "10.1.1.1", 1883
+BROKER, PORT     = "192.168.0.236", 1883
 CLIENT_ID        = "hub-audio"
 SOUNDS_DIR       = "/opt/edge-net/sounds"
 TOPIC_PLAY       = "edge/hub/audio/play"

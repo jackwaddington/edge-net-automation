@@ -18,7 +18,7 @@ import time
 
 import paho.mqtt.client as mqtt
 
-BROKER, PORT = "10.1.1.1", 1883
+BROKER, PORT = "192.168.0.236", 1883
 
 # (node, button) -> relay number (1..3). Many controls may share a relay.
 SOURCES = {
